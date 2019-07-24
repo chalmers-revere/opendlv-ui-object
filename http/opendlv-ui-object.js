@@ -1,11 +1,15 @@
 
+const lonDistance = 50.0;
+const latDistance = 20.0;
+
 let ctx;
 let canvas;
 let map;
 let markers;
 let changedView = false;
 let currentFrameId;
-let currentLocalObjects = {};
+let collectedLocalObjects = {};
+let readyLocalObjects = {};
 
 
 window.onload = function (evt) {
@@ -50,30 +54,39 @@ function clear2dView() {
   ctx.stroke(); 
 }
 
-function drawObjects3dView() {
+function drawObjects2dView() {
   clear2dView();
 
-  Object.keys(currentLocalObjects).forEach(function(objectId) {
-    const obj = currentLocalObjects[objectId];
-    const type = obj["type"];
-    const x = obj["position"]["x"];
-    const y = obj["position"]["y"];
+  Object.keys(readyLocalObjects).forEach(function(objectId) {
+    const obj = readyLocalObjects[objectId];
+    if (!("type" in obj)) {
+    } else if (!("position" in obj)) {
+      console.log("Warning: Object missing position (id " + objectId + ")");
+    } else {
+      const type = obj["type"];
+      const x = obj["position"]["x"];
+      const y = obj["position"]["y"];
 
-    const r = 5;
+      const halfWidth = canvas.width / 2;
+      const j = canvas.height - canvas.height * (x / lonDistance);
+      const i = halfWidth - halfWidth * (y / latDistance);
 
-    let c = 'black';
-    if (type == 0) {
-      c = 'yellow';
-    } else if (c == 1) {
-      c = 'blue';
-    } else if (c == 2) {
-      c = 'red';
+      const r = 5;
+
+      let c = 'black';
+      if (type == 0) {
+        c = 'yellow';
+      } else if (c == 1) {
+        c = 'blue';
+      } else if (c == 2) {
+        c = 'red';
+      }
+
+      ctx.beginPath();
+      ctx.arc(i, j, r, 0, 2 * Math.PI, false);
+      ctx.fillStyle = c;
+      ctx.fill();
     }
-
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, 2 * Math.PI, false);
-    ctx.fillStyle = c;
-    ctx.fill();
   });
 }
 
@@ -154,34 +167,45 @@ function dataIn(data) {
   }
   if (d.dataType == 1128) {  // Frame start
     currentFrameId = d['opendlv_logic_perception_ObjectFrameStart']['objectFrameId'];
-    currentLocalObjects = {};
-    console.log("Frame start");
+    console.log("Frame start " + currentFrameId);
   }
   if (d.dataType == 1129) {  // Frame end
-    drawObjects2dView();
-    console.log("Frame end");
+    const frameId = d['opendlv_logic_perception_ObjectFrameEnd']['objectFrameId'];
+    console.log("Frame end " + frameId);
+    if (frameId == currentFrameId) {
+      drawObjects2dView();
+      readyLocalObjects = collectedLocalObjects;
+      collectedLocalObjects = {};
+    }
   }
   if (d.dataType == 1130) {  // Object
     const objectId = d['opendlv_logic_perception_Object']['objectId'];
-    currentLocalObjects[objectId] = {};
+    collectedLocalObjects[objectId] = {};
   }
   if (d.dataType == 1131) {  // ObjectType
     const objectId = d['opendlv_logic_perception_ObjectType']['objectId'];
     const type = d['opendlv_logic_perception_ObjectType']['type'];
-    currentLocalObjects[objectId] = {}; //Hack
-    currentLocalObjects[objectId]["type"] = type;
-    console.log("Object type: " + type + " for object id " + objectId);
+
+    if (!(objectId in collectedLocalObjects)) {
+      collectedLocalObjects[objectId] = {};
+    }
+
+    collectedLocalObjects[objectId]["type"] = type;
   }
   if (d.dataType == 1136) {  // ObjectPosition
     const objectId = d['opendlv_logic_perception_ObjectPosition']['objectId'];
     const x = d['opendlv_logic_perception_ObjectPosition']['x'];
     const y = d['opendlv_logic_perception_ObjectPosition']['y'];
     const z = d['opendlv_logic_perception_ObjectPosition']['z'];
-    currentLocalObjects[objectId]["position"] = {};
-    currentLocalObjects[objectId]["position"]["x"] = x;
-    currentLocalObjects[objectId]["position"]["y"] = y;
-    currentLocalObjects[objectId]["position"]["z"] = z;
-    console.log("Object position: " + x + "," + y + " for object id " + objectId);
+    
+    if (!(objectId in collectedLocalObjects)) {
+      collectedLocalObjects[objectId] = {};
+    }
+
+    collectedLocalObjects[objectId]["position"] = {};
+    collectedLocalObjects[objectId]["position"]["x"] = x;
+    collectedLocalObjects[objectId]["position"]["y"] = y;
+    collectedLocalObjects[objectId]["position"]["z"] = z;
   }
 
 }
